@@ -103,7 +103,10 @@ textarea{
 .letter:disabled{opacity:.25;box-shadow:none}
 .progress{height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin-bottom:14px}
 .progress i{display:block;height:100%;background:var(--mint);transition:width .3s}
-.board{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center}
+.board{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;text-align:center}
+.mastery{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.mw{border:2px solid var(--line);border-radius:999px;padding:3px 10px;font-size:.9rem;background:var(--card)}
+.mw.ok{border-color:var(--mint);background:var(--mint);color:#fff}
 .board div{border:2px dashed var(--line);border-radius:12px;padding:8px 2px;font-size:1.5rem;min-height:64px}
 .board small{display:block;font-size:.72rem;color:var(--soft)}
 .board .got{border-style:solid;border-color:var(--sun)}
@@ -139,7 +142,7 @@ textarea{
 <body>
 <div class="wrap">
   <h1>단어 탐험 노트</h1>
-  <p class="sub" id="sub">단어 놀이로 코인을 모아 내 캐릭터를 꾸며요.</p>
+  <p class="sub" id="sub">단어 10개를 5일 동안 놀면서 외우고, 코인으로 내 캐릭터를 꾸며요.</p>
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" data-tab="play" aria-selected="true">놀이하기</button>
     <button class="tab" role="tab" data-tab="closet" aria-selected="false">꾸미기</button>
@@ -151,7 +154,7 @@ textarea{
 <div class="toast" id="toast" role="status"></div>
 <script>
 (function(){
-const DAYS=7;
+const DAYS=5, MAXW=10, MASTER=3;
 const ACTS=[
   {id:"cards",em:"🃏",nm:"단어 카드",ds:"뒤집으며 뜻과 발음 익히기"},
   {id:"match",em:"🧩",nm:"짝 맞추기",ds:"영어와 뜻 카드 찾기"},
@@ -240,7 +243,7 @@ const ITEMS=[
   ["o_pinkgown","outfit","princess","장미 볼가운",120],["o_stargown","outfit","princess","별빛 라벤더 드레스",120],
   ["o_idolsparkle","outfit","idol","반짝이 무대 의상",110],["o_idolwhite","outfit","idol","화이트 무대룩",100],
   ["o_magicribbon","outfit","magic","리본 마법복",110],["o_magiccape","outfit","magic","별빛 망토 드레스",120],
-  ["o_rainbow","outfit","princess","무지개 공주 드레스",0,3],["o_legend","outfit","magic","전설의 날개 의상",0,7],
+  ["o_rainbow","outfit","princess","무지개 공주 드레스",0,3],["o_legend","outfit","magic","전설의 날개 의상",0,5],
   ["h_bob","hair","base","단발머리",0],["h_braid","hair","school","양갈래 땋은 머리",50],["h_wave","hair","princess","긴 웨이브 머리",60],["h_pony","hair","idol","하이 포니테일",60],["h_twin","hair","magic","트윈테일",60],
   ["c_brown","hairColor","base","초코 브라운",0],["c_black","hairColor","base","까만색",0],["c_blonde","hairColor","princess","금발",40],["c_pink","hairColor","idol","딸기 핑크",40],["c_lav","hairColor","magic","라벤더",40],["c_mint","hairColor","magic","민트",40],
   ["s_sneaker","shoes","base","운동화",0],["s_mary","shoes","school","메리제인 구두",40],["s_glass","shoes","princess","유리 구두",60],["s_boots","shoes","idol","반짝이 부츠",60],["s_ribbon","shoes","magic","리본 부츠",60],
@@ -311,7 +314,7 @@ function renderCloset(){
   app.appendChild(wrap);
 }
 
-const blank=()=>({days:Array.from({length:DAYS},()=>({words:[]})),stars:{},wrong:{},current:0,coins:0,owned:[],equip:Object.assign({},DEFAULT_EQ),bonus:{}});
+const blank=()=>({words:[],correct:{},stars:{},wrong:{},current:0,coins:0,owned:[],equip:Object.assign({},DEFAULT_EQ),bonus:{}});
 let S=blank(), tab="play", view=null, db=null, docRef=null, saveTimer=null;
 const app=document.getElementById("app");
 const $=(h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild};
@@ -324,7 +327,10 @@ function speak(w){try{const u=new SpeechSynthesisUtterance(w);u.lang="en-US";u.r
 function normalize(d){
   const b=blank();
   if(!d||typeof d!=="object")return b;
-  if(Array.isArray(d.days))for(let i=0;i<DAYS;i++){const w=d.days[i]&&d.days[i].words;if(Array.isArray(w))b.days[i].words=w.filter(x=>x&&x.en&&x.ko).map(x=>({en:String(x.en),ko:String(x.ko)}))}
+  const clean=(w)=>Array.isArray(w)?w.filter(x=>x&&x.en&&x.ko).map(x=>({en:String(x.en),ko:String(x.ko)})).slice(0,MAXW):[];
+  if(Array.isArray(d.words))b.words=clean(d.words);
+  else if(Array.isArray(d.days)){const f=d.days.find(x=>x&&Array.isArray(x.words)&&x.words.length);if(f)b.words=clean(f.words)}
+  if(d.correct&&typeof d.correct==="object")b.correct=d.correct;
   if(d.stars&&typeof d.stars==="object")b.stars=d.stars;
   if(d.wrong&&typeof d.wrong==="object")b.wrong=d.wrong;
   if(Number.isFinite(d.coins)&&d.coins>=0)b.coins=Math.floor(d.coins);
@@ -355,14 +361,16 @@ try{const raw=localStorage.getItem("wordweek");if(raw)S=normalize(JSON.parse(raw
 })();
 
 /* ---------- helpers ---------- */
-const words=(i=S.current)=>S.days[i].words;
+const words=()=>S.words;
+const isMastered=(w)=>(S.correct[w.en]||0)>=MASTER&&!S.wrong[w.en];
+function masteryHTML(){const w=S.words;const n=w.filter(isMastered).length;return `<p class="jua" style="font-size:1.1rem;margin:14px 0 0">외운 단어 ${n} / ${w.length}</p><div class="mastery">${w.map(x=>`<span class="mw ${isMastered(x)?"ok":""}">${isMastered(x)?"✓ ":""}${esc(x.en)}</span>`).join("")}</div><p class="hint" style="margin:6px 0 0">퀴즈나 철자 만들기에서 ${MASTER}번 맞히면 초록색이 돼요.</p>`}
 const starsOf=(i)=>S.stars[i]||{};
 const countStars=(i)=>ACTS.filter(a=>starsOf(i)[a.id]).length;
 function giveStar(act){
   const d=S.current; S.stars[d]=Object.assign({},starsOf(d),{[act]:true}); save();
   if(countStars(d)===ACTS.length&&!S.bonus[d]){S.bonus[d]=true;addCoins(50);setTimeout(()=>toast(STICKERS[d]+" 오늘 스티커! 보너스 50코인"),1700)}
 }
-function allWords(){const out=[];S.days.forEach(d=>d.words.forEach(w=>out.push(w)));return out}
+function allWords(){return S.words.slice()}
 function parse(text){
   const out=[];
   text.split(/\n/).forEach(line=>{
@@ -409,13 +417,13 @@ function renderHome(){
   const w=words();
   const p=$('<section class="panel"></section>');
   if(!w.length){
-    p.appendChild($(`<div class="empty"><p class="jua" style="font-size:1.3rem;margin:0 0 6px">${S.current+1}일차 단어가 아직 없어요</p><p class="hint">어른이 ‘단어 넣기’ 탭에서 단어를 넣어 주세요.</p></div>`));
+    p.appendChild($(`<div class="empty"><p class="jua" style="font-size:1.3rem;margin:0 0 6px">이번 주 단어가 아직 없어요</p><p class="hint">어른이 ‘단어 넣기’ 탭에서 단어를 넣어 주세요.</p></div>`));
     const b=$('<button class="btn primary">단어 넣으러 가기</button>');
     b.onclick=()=>document.querySelector('[data-tab="setup"]').click();
     p.firstChild.appendChild(b);
     app.appendChild(p);return;
   }
-  p.appendChild($(`<h2>${S.current+1}일차 · 단어 ${w.length}개</h2>`));
+  p.appendChild($(`<h2>${S.current+1}일차 · 이번 주 단어 ${w.length}개</h2>`));
   const g=$('<div class="acts"></div>');
   ACTS.forEach(a=>{
     const done=starsOf(S.current)[a.id];
@@ -424,19 +432,20 @@ function renderHome(){
     g.appendChild(b);
   });
   p.appendChild(g);
-  const all=allWords();
-  if(all.length>=4){
-    const r=$('<button class="btn" style="margin-top:14px;width:100%">🔁 지금까지 배운 단어 모두 복습하기</button>');
+  const wr=allWords().filter(x=>S.wrong[x.en]);
+  if(wr.length){
+    const r=$(`<button class="btn" style="margin-top:14px;width:100%">🔁 헷갈리는 단어 ${wr.length}개 집중 복습</button>`);
     r.onclick=()=>{view=()=>quiz(reviewSet(),true);render()};
     p.appendChild(r);
   }
+  p.appendChild($(`<div>${masteryHTML()}</div>`));
   app.appendChild(p);
 }
 function reviewSet(){
   const all=allWords();
   const wrong=all.filter(w=>S.wrong[w.en]);
   const rest=shuffle(all.filter(w=>!S.wrong[w.en]));
-  return shuffle(wrong.concat(rest).slice(0,Math.max(10,wrong.length)));
+  return shuffle(wrong.concat(rest).slice(0,Math.max(5,wrong.length)));
 }
 function backBar(title){
   const r=$(`<div class="row" style="justify-content:space-between;margin-bottom:12px"><h2 style="margin:0">${title}</h2></div>`);
@@ -540,7 +549,7 @@ function quiz(w,review){
           if(answered)return;answered=true;
           const ok=o.en===x.en;
           b.classList.add(ok?"ok":"no");
-          if(ok){score++;if(S.wrong[x.en]){S.wrong[x.en]--;if(S.wrong[x.en]<=0)delete S.wrong[x.en]}}
+          if(ok){score++;S.correct[x.en]=(S.correct[x.en]||0)+1;if(S.wrong[x.en]){S.wrong[x.en]--;if(S.wrong[x.en]<=0)delete S.wrong[x.en]}}
           else{S.wrong[x.en]=(S.wrong[x.en]||0)+1;[...box.children].forEach((c,k)=>{if(opts[k].en===x.en)c.classList.add("ok")})}
           save();
           if(reverse)speak(x.en);
@@ -584,7 +593,7 @@ function spell(w){
           typed.push(l);paint();
           if(typed.length===target.length){
             const word=typed.map(t=>t.c).join("");
-            if(word===target){speak(x.en);toast("정답! 👏");setTimeout(()=>{i++;if(i<qs.length)draw();else finish(p,"spell",mistakes?`다 만들었어요! (다시 한 번 ${mistakes}번)`:"한 번도 안 틀리고 다 만들었어요!",start,Math.max(10,qs.length*5-mistakes*2))},900)}
+            if(word===target){speak(x.en);S.correct[x.en]=(S.correct[x.en]||0)+1;save();toast("정답! 👏");setTimeout(()=>{i++;if(i<qs.length)draw();else finish(p,"spell",mistakes?`다 만들었어요! (다시 한 번 ${mistakes}번)`:"한 번도 안 틀리고 다 만들었어요!",start,Math.max(10,qs.length*5-mistakes*2))},900)}
             else{mistakes++;toast("앗, 순서를 다시 생각해 봐요");setTimeout(()=>{typed=[];paint()},800)}
           }
         };
@@ -609,6 +618,7 @@ function renderBoard(){
   }
   p.appendChild(b);
   p.appendChild($(`<p class="jua" style="font-size:1.2rem;margin:16px 0 4px">모은 별 ${total} / ${DAYS*ACTS.length}</p>`));
+  if(S.words.length)p.appendChild($(`<div>${masteryHTML()}</div>`));
   const wr=allWords().filter(w=>S.wrong[w.en]);
   if(wr.length)p.appendChild($(`<p class="hint">조금 더 연습하면 좋은 단어: ${wr.map(w=>esc(w.en)).join(", ")}</p>`));
   app.appendChild(p);
@@ -616,31 +626,32 @@ function renderBoard(){
 
 /* ---------- setup ---------- */
 function renderSetup(){
-  app.appendChild(dayPicker());
   const p=$('<section class="panel"></section>');
-  p.appendChild($(`<h2>${S.current+1}일차 단어</h2>`));
-  p.appendChild($('<p class="hint" style="margin-top:-6px">한 줄에 하나씩, 영어 단어와 뜻을 적어 주세요. 예: <b>apple - 사과</b> 또는 <b>apple 사과</b></p>'));
+  p.appendChild($(`<h2>이번 주 단어 (최대 ${MAXW}개)</h2>`));
+  p.appendChild($('<p class="hint" style="margin-top:-6px">5일 동안 같은 단어로 매일 놀이해요. 한 줄에 하나씩 영어 단어와 뜻을 적어 주세요. 예: <b>apple - 사과</b> 또는 <b>apple 사과</b></p>'));
   const ta=$('<textarea aria-label="단어 목록" placeholder="apple - 사과&#10;library - 도서관&#10;brave - 용감한"></textarea>');
   ta.value=words().map(w=>`${w.en} - ${w.ko}`).join("\n");
   p.appendChild(ta);
   const info=$('<p class="hint"></p>');p.appendChild(info);
-  const upd=()=>{const n=parse(ta.value).length;info.textContent=`인식된 단어 ${n}개`};
+  const upd=()=>{const n=parse(ta.value).length;info.textContent=n>MAXW?`인식된 단어 ${n}개 · 앞의 ${MAXW}개만 저장돼요`:`인식된 단어 ${n}개`};
   ta.addEventListener("input",upd);upd();
   const r=$('<div class="row"></div>');
   const sv=$('<button class="btn primary">저장하기</button>');
   sv.onclick=()=>{
-    const list=parse(ta.value);
-    S.days[S.current].words=list; S.stars[S.current]={}; save();
-    toast(`${S.current+1}일차 단어 ${list.length}개를 저장했어요`);render();
+    const list=parse(ta.value).slice(0,MAXW);
+    const fresh=S.words.length&&Object.keys(S.stars).length;
+    if(fresh&&!confirm("새 단어로 저장하면 새로운 주가 시작돼요. 별과 외운 단어 기록이 처음부터 시작되고, 코인과 옷장은 그대로 남아요. 저장할까요?"))return;
+    S.words=list; S.stars={}; S.bonus={}; S.wrong={}; S.correct={}; S.current=0; save();
+    toast(`이번 주 단어 ${list.length}개를 저장했어요`);render();
   };
   const ex=$('<button class="btn">예시 단어 채우기</button>');
   ex.onclick=()=>{ta.value=["apple - 사과","library - 도서관","brave - 용감한","river - 강","thirsty - 목마른","cloud - 구름","borrow - 빌리다","quiet - 조용한","forest - 숲","whisper - 속삭이다"].join("\n");upd()};
   const rs=$('<button class="btn">이번 주 기록 지우기</button>');
-  rs.onclick=()=>{if(confirm("별, 스티커, 틀린 단어 기록을 모두 지울까요? 단어 목록은 그대로 남아요.")){S.stars={};S.wrong={};save();toast("기록을 지웠어요");render()}};
+  rs.onclick=()=>{if(confirm("별, 스티커, 틀린 단어 기록을 모두 지울까요? 단어 목록은 그대로 남아요.")){S.stars={};S.wrong={};S.correct={};S.bonus={};S.current=0;save();toast("기록을 지웠어요");render()}};
   const bn=$('<button class="btn">🪙 칭찬 코인 +50</button>');
   bn.onclick=()=>{addCoins(50);toast("칭찬 코인 50개를 줬어요")};
   r.append(sv,ex,bn,rs);p.appendChild(r);
-  p.appendChild($('<p class="hint" style="margin-top:14px">단어를 바꿔 저장하면 그날의 별은 새로 시작해요. 발음은 기기의 영어 음성으로 나와요.</p>'));
+  p.appendChild($('<p class="hint" style="margin-top:14px">새 단어를 저장하면 1일차부터 새로운 주가 시작돼요. 발음은 기기의 영어 음성으로 나와요.</p>'));
   app.appendChild(p);
 }
 
